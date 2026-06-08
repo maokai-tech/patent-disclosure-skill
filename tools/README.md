@@ -2,6 +2,29 @@
 
 本目录存放**可重复执行的辅助脚本**。技能主流程以 `SKILL.md` 与 `prompts/` 为准；本目录侧重格式转换等可执行工具。
 
+## 查新数据源编排（`prior_art_search.py`，Step 5 推荐入口）
+
+将各查新数据源抽象为可插拔 `Provider`，**按质量序运行、单源失败自动回退、按公开号合并去重**，
+统一输出，消除"单点爬国知局站"的脆弱性。新增/替换数据源只需加一个 provider，不动编排逻辑。
+
+| 脚本 / 模块 | 作用 |
+|------|------|
+| **`prior_art_search.py`** | **（推荐入口）** 多源编排器。**stdout 仅一行** `PRIOR_ART_JSON:` + JSON 数组（每条含 **`source`**/`title`/`pub_number`/`link`/`abstract`）；`PA_*` 诊断在 stderr（ASCII）。`--mode fallback`（默认，首个有命中的源即停）/ `--mode federate`（所有可用源合并）；`--providers a,b` 限定数据源。 |
+| `provider_base.py` | 统一 `Hit` 结构 + `Provider` 接口 + `merge_dedupe` / `to_jsonable`。 |
+| `provider_cnipa.py` | 国知局公布站 provider（`quality_rank=10`，最优先），包装下方 `cnipa_epub_*`，缺 Playwright 时自动跳过。 |
+| `provider_google_patents.py` | Google Patents provider（keyless、`quality_rank=20`），全球回退；非官方端点，异常即返回空由编排器回退。`parse_xhr_json` 为纯函数，便于离线测试。 |
+
+```bash
+# 启用国知局源（可选）：装 Playwright；不装则编排器自动回退到 google_patents
+pip install -r tools/requirements-cnipa.txt && python -m playwright install chromium
+python3 tools/prior_art_search.py 知识库            # 单词一查（cnipa 走 Playwright，控时建议一次一词）
+python3 tools/prior_art_search.py --mode federate 调度 异构调度   # 多源合并、更高召回
+```
+
+> **扩展数据源**：实现 `provider_base.Provider`（设 `name`/`quality_rank`，实现 `available()`/`search()`），
+> 在 `prior_art_search.default_providers()` 注册即可。官方/商业源（EPO OPS、PatentsView、智慧芽/incoPat 等）
+> 可据此接入；缺密钥时让 `available()` 返回 `False` 即自动跳过。离线单元测试见 `tests/test_prior_art_providers.py`。
+
 ## 国知局公布公告检索（epub.cnipa.gov.cn，Step 5 查新优先）
 
 | 脚本 | 作用 |
