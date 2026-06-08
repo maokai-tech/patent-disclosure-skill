@@ -6,6 +6,35 @@
 
 ## 检索渠道（**优先国知局公布公告站，再降级 WebSearch**）
 
+### A0. 多源编排器 `prior_art_search.py`（**推荐入口**）
+
+为消除"单点爬国知局站"的脆弱性，本仓库提供**数据源编排器**，把各查新数据源抽象为可插拔
+`Provider`，按**质量序**运行、**单源失败自动回退**、按公开号**合并去重**，统一输出。
+
+1. **工具**：`tools/prior_art_search.py`；内置数据源 `cnipa_epub`（国知局官方公布站，优先级最高）与
+   `google_patents`（keyless 全球回退）。某源缺依赖/缺密钥/不可达时**自动跳过**并回退到下一个，
+   不再因单一站点改版或反爬而整体失败。
+2. **输出约定**：**stdout 仅一行** **`PRIOR_ART_JSON:`** + JSON 数组；每条含
+   **`source`**（数据源标识）/ `title` / `pub_number` / `link` / `abstract`。诊断行
+   **`PA_PROVIDER:` / `PA_MERGE:` / `PA_HINT:`** 在 **stderr** 且为 **ASCII**。
+   `source` 用于在 1.1「检索说明」中**如实标注公开数据库名**（见下「1.1 检索说明写法」；
+   写**数据库名**如「国家知识产权局专利公布公告系统」「Google Patents」，**不要**写脚本名）。
+3. **模式**：默认 `--mode fallback`（第一个有命中的源即停，控时控成本）；需要更高召回时用
+   `--mode federate`（所有可用源合并）。
+4. **检索词与控时**：拆词责任仍在 Agent（见下「国知局检索词」语义块要求）。**因 `cnipa_epub`
+   走 Playwright**，为控时仍建议**每次调用只传一个检索词**、由 Agent 跨次调用按 `pub_number`
+   合并（脚本对单次多词会进程内循环，仅供本地便利）。
+   ```bash
+   pip install -r tools/requirements-cnipa.txt && python -m playwright install chromium  # 启用 cnipa 源（可选）
+   python3 ${CLAUDE_SKILL_DIR}/tools/prior_art_search.py 知识库
+   python3 ${CLAUDE_SKILL_DIR}/tools/prior_art_search.py 检索增强
+   ```
+5. **解析与降级**：以 stdout 唯一一行 `PRIOR_ART_JSON:` 的 JSON 为准；其 `abstract` 字段同样适用下文
+   **「`abstract` 必用」**。当 `PRIOR_ART_JSON` 为空数组、或条目经核对明显无关时，按 **B** 降级 **WebSearch**。
+
+> 仍可直接调用 `cnipa_epub_search.py`（输出 `EPUB_HITS_JSON:`）走**仅国知局**的旧路径；
+> 编排器与其行为一致，只是多了自动回退与统一 `source` 标注。下文 **A / B** 描述各数据源细节。
+
 ### A. 中国专利公布公告（**优先**，官方站点）
 
 1. **站点**：[国家知识产权局 中国专利公布公告](http://epub.cnipa.gov.cn/)（**仅** `epub.cnipa.gov.cn`）。
