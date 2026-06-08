@@ -31,10 +31,27 @@ def _strip_tags(s: str | None) -> str | None:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s)).strip() or None
 
 
+def _join_codes(val) -> str | None:
+    """分类号字段可能为字符串或列表（元素为 str 或 {'code': ...}）；归一为 "; " 连接的字符串。"""
+    if not val:
+        return None
+    items = val if isinstance(val, list) else [val]
+    codes: list[str] = []
+    for it in items:
+        code = it.get("code") if isinstance(it, dict) else it
+        if isinstance(code, str) and code.strip():
+            codes.append(code.strip())
+    # 去重保序
+    seen: set[str] = set()
+    uniq = [c for c in codes if not (c in seen or seen.add(c))]
+    return "; ".join(uniq) or None
+
+
 def parse_xhr_json(obj: dict) -> list[Hit]:
     """
     解析 Google Patents xhr 响应。其结构为 ``results.cluster[].result[].patent``，
-    其中 ``patent`` 含 ``publication_number`` / ``title`` / ``snippet`` 等（可能带高亮标签）。
+    其中 ``patent`` 含 ``publication_number`` / ``title`` / ``snippet`` 等（可能带高亮标签），
+    分类号可能出现在 ``cpc`` / ``ipc``（字符串或列表）——**尽力解析**，缺失则留空。
     结构若变更，仅需调整本函数。
     """
     out: list[Hit] = []
@@ -55,6 +72,8 @@ def parse_xhr_json(obj: dict) -> list[Hit]:
                     pub_number=num,
                     link=link,
                     abstract=snippet,
+                    cpc=_join_codes(pat.get("cpc")),
+                    ipc=_join_codes(pat.get("ipc")),
                 )
             )
     return out

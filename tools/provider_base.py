@@ -30,6 +30,8 @@ class Hit:
     pub_number: str | None = None
     link: str | None = None
     abstract: str | None = None
+    cpc: str | None = None  # CPC 分类号（多个以 "; " 连接），供 P1 按分类聚类/重排
+    ipc: str | None = None  # IPC 分类号（同上）
 
     def dedupe_key(self) -> str:
         """
@@ -63,16 +65,18 @@ class Provider(ABC):
         raise NotImplementedError
 
 
-#: 跨源去重时可安全补全的字段。**不含 ``abstract``**：摘要须忠于其来源
+#: 跨源去重时可安全补全的字段（著录 / 分类元信息）。**不含 ``abstract``**：摘要须忠于其来源
 #: （``source``），跨源补全会使一条命中的摘要来自另一数据库却仍标着原 ``source``，
 #: 与 ``prior_art_search.md``「abstract 必用、1.1 标注公开数据库名」相悖。
-_BACKFILL_FIELDS = ("title", "pub_number", "link")
+#: ``cpc`` / ``ipc`` 为客观分类号，跨源补全安全，且利于 P1 按分类重排。
+_BACKFILL_FIELDS = ("title", "pub_number", "link", "cpc", "ipc")
 
 
 def merge_dedupe(hit_lists: list[list[Hit]]) -> list[Hit]:
     """
-    跨词 / 跨数据源按 ``dedupe_key`` 合并去重；保留先出现者，并用后到者补全其**空的著录字段**
-    （``title`` / ``pub_number`` / ``link``）。**不跨源补全 ``abstract``**，以保持摘要与 ``source`` 一致。
+    跨词 / 跨数据源按 ``dedupe_key`` 合并去重；保留先出现者，并用后到者补全其**空的著录 / 分类字段**
+    （``title`` / ``pub_number`` / ``link`` / ``cpc`` / ``ipc``）。**不跨源补全 ``abstract``**，
+    以保持摘要与 ``source`` 一致。
     """
     out: list[Hit] = []
     index: dict[str, Hit] = {}
