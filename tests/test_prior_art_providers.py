@@ -53,6 +53,9 @@ def _h(source, num=None, title=None, link=None, abstract=None):
 
 def test_dedupe_key_normalizes_pub_number():
     assert _h("x", num="CN 123456789 A").dedupe_key() == "CN123456789A"
+    assert _h("x", num="CN-114820000-A").dedupe_key() == "CN114820000A"  # 连字符归一
+    # 同一专利两源不同写法应得到同一 key（federate 跨源去重）
+    assert _h("a", num="CN-114820000-A").dedupe_key() == _h("b", num="CN114820000A").dedupe_key()
     assert _h("x", link="http://e/p").dedupe_key() == "http://e/p"
     assert _h("x", title="A long title here").dedupe_key() == "A long title here"
     assert _h("x").dedupe_key() == ""
@@ -171,6 +174,25 @@ def test_run_federate_merges_all_sources():
     nums = sorted(h.pub_number for h in out)
     assert nums == ["CN1A", "CN2A"]      # 跨源去重
     assert p2.searched == ["t"]          # federate 下所有源都跑
+
+
+def test_google_patents_search_diagnoses_failure():
+    from provider_google_patents import GooglePatentsProvider
+    import urllib.request as u
+
+    def _boom(*a, **k):
+        raise RuntimeError("netfail")
+
+    orig = u.urlopen
+    u.urlopen = _boom
+    try:
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            hits = GooglePatentsProvider(timeout=1).search("x")
+        assert hits == []                          # 仍优雅降级
+        assert "google_patents" in buf.getvalue()  # 但留下可诊断的 breadcrumb
+    finally:
+        u.urlopen = orig
 
 
 def test_to_jsonable_shape():

@@ -32,9 +32,12 @@ class Hit:
     abstract: str | None = None
 
     def dedupe_key(self) -> str:
-        """去重主键：公开号（归一化）> 链接 > 标题前缀。"""
+        """
+        去重主键：公开号（归一化）> 链接 > 标题前缀。公开号去掉空格与**连字符**并大写，
+        使各源不同写法（如 ``CN-114820000-A`` 与 ``CN114820000A``）可正确合并。
+        """
         return (
-            (self.pub_number or "").replace(" ", "").upper()
+            (self.pub_number or "").replace(" ", "").replace("-", "").upper()
             or (self.link or "")
             or (self.title or "")[:120]
         )

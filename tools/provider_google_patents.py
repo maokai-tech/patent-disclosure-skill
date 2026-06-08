@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import urllib.parse
 import urllib.request
 
@@ -85,5 +86,12 @@ class GooglePatentsProvider(Provider):
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 data = r.read()
             return parse_xhr_json(json.loads(data))
-        except Exception:
+        except Exception as e:
+            # 仍优雅降级返回 []，但留一行 ASCII 诊断：否则端点变更 / 限流 / 解析 bug
+            # 与"真的无结果"无法区分（该端点为非官方、schema 未经长期验证）。
+            print(
+                "PA_SRC: google_patents term_failed error=%s" % repr(str(e))[:200],
+                file=sys.stderr,
+                flush=True,
+            )
             return []
