@@ -47,8 +47,9 @@ class FakeProvider(Provider):
         return list(self._hits.get(term, []))
 
 
-def _h(source, num=None, title=None, link=None, abstract=None):
-    return Hit(source=source, pub_number=num, title=title, link=link, abstract=abstract)
+def _h(source, num=None, title=None, link=None, abstract=None, cpc=None, ipc=None):
+    return Hit(source=source, pub_number=num, title=title, link=link,
+               abstract=abstract, cpc=cpc, ipc=ipc)
 
 
 def test_dedupe_key_normalizes_pub_number():
@@ -62,9 +63,10 @@ def test_dedupe_key_normalizes_pub_number():
 
 
 def test_merge_dedupe_backfills_citation_fields_but_not_abstract():
-    a = _h("cnipa", num="CN111A", title=None, link=None, abstract=None)
-    # 同号，后到源带著录字段与摘要
-    b = _h("google", num="CN111A", title="标题乙", link="http://x", abstract="机翻摘要")
+    a = _h("cnipa", num="CN111A", title=None, link=None, abstract=None, cpc=None)
+    # 同号，后到源带著录字段、分类号与摘要
+    b = _h("google", num="CN111A", title="标题乙", link="http://x",
+           abstract="机翻摘要", cpc="G06F9/48")
     c = _h("google", num="CN222B", title="标题丙")
     out = merge_dedupe([[a], [b, c]])
     assert len(out) == 2
@@ -73,6 +75,7 @@ def test_merge_dedupe_backfills_citation_fields_but_not_abstract():
     assert first.source == "cnipa"          # 先到为主，source 不变
     assert first.title == "标题乙"           # 著录字段跨源补全
     assert first.link == "http://x"          # 著录字段跨源补全
+    assert first.cpc == "G06F9/48"           # 分类号跨源补全（客观信息）
     assert first.abstract is None            # abstract 不跨源补全（忠于来源）
     assert out[1].pub_number == "CN222B"
 
@@ -115,6 +118,24 @@ def test_parse_xhr_json_handles_empty_and_malformed():
     assert parse_xhr_json({}) == []
     assert parse_xhr_json({"results": {}}) == []
     assert parse_xhr_json({"results": {"cluster": [{"result": [{"patent": {}}]}]}}) == []
+
+
+def test_parse_xhr_json_extracts_classification_codes():
+    def _wrap(pat):
+        return {"results": {"cluster": [{"result": [{"patent": pat}]}]}}
+
+    # cpc 为列表(元素为 dict)、ipc 为字符串 —— 两种形态都应归一
+    hits = parse_xhr_json(_wrap({
+        "publication_number": "CN1A",
+        "title": "t",
+        "cpc": [{"code": "G06F9/48"}, {"code": "G06F9/50"}, {"code": "G06F9/48"}],
+        "ipc": "G06F 9/48",
+    }))
+    assert hits[0].cpc == "G06F9/48; G06F9/50"   # 去重保序、"; " 连接
+    assert hits[0].ipc == "G06F 9/48"
+    # 缺分类号时留空
+    hits2 = parse_xhr_json(_wrap({"publication_number": "CN2A", "title": "t"}))
+    assert hits2[0].cpc is None and hits2[0].ipc is None
 
 
 def test_run_fallback_stops_at_first_with_hits():
@@ -196,10 +217,12 @@ def test_google_patents_search_diagnoses_failure():
 
 
 def test_to_jsonable_shape():
-    rows = to_jsonable([_h("google_patents", num="CN1A", title="t", link="u", abstract="a")])
+    rows = to_jsonable([_h("google_patents", num="CN1A", title="t", link="u",
+                           abstract="a", cpc="G06F9/48", ipc="G06F9/48")])
     assert rows == [{
         "source": "google_patents", "title": "t",
         "pub_number": "CN1A", "link": "u", "abstract": "a",
+        "cpc": "G06F9/48", "ipc": "G06F9/48",
     }]
 
 
